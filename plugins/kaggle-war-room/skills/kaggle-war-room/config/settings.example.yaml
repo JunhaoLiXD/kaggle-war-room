@@ -1,6 +1,7 @@
 # kaggle-war-room settings — copied into kaggle-war-room-workspace/<slug>/settings.yaml by init_competition.py.
 # Every value here is safe to edit. Comments explain each key.
 
+kaggle_username: null             # your Kaggle username (owner of kernels/datasets); auto-detected if possible
 flavor: true                      # small war-room touches at a few key moments; false = plain output
 
 competition:
@@ -32,11 +33,14 @@ compute:                          # Defaults assume Kaggle's free quota. Add you
   local_gpus: []                  # e.g. [{name: RTX 4090, vram_gb: 24, hours_per_day: 8}]
   inference_time_limit_hours: null   # code competitions only; rules.md is the source of truth
   confirm_if_gpu_hours_over: 4       # ask the user before any single experiment above this
+  kaggle_accelerator: NvidiaTeslaT4  # GPU for Kaggle kernel runs (NvidiaTeslaT4 | NvidiaTeslaP100 | ...)
 
 submissions:
   daily_limit: 5                  # must match the competition rules
   allocation: strategist          # strategist = decided daily in plan.md; integer = fixed per day
   final_picks: 2                  # number of final submissions allowed
+  sample_submission: null         # path to sample_submission.csv; every submission is validated against it
+  poll_timeout_minutes: 8         # max minutes one `submit.py poll` waits (keep < 10: agent command limits)
 
 phases:                           # Ratio of exploration vs. fine-tuning by days left.
   explore:  { until_days_left: 30, stagnation_limit: 3, focus: "try many directions" }
@@ -51,4 +55,9 @@ scout:
   topic_sort: active              # hot | top | new | recent | active
   leaderboard_top_n: 50           # rows of the public LB kept in each snapshot
   min_votes_to_download: 5        # download sources of tracked notebooks with at least this many votes
+  host_authors: []                # display names of hosts / Kaggle staff; their posts are flagged [HOST]
   max_downloads_per_run: 10       # cap per run; the rest (and failed downloads) are retried next run
+
+research:
+  writeup_topics_scan: 100        # top forum topics scanned when looking for writeups
+  max_message_chars: 3000         # truncate each saved post (writeups get 2x) to save tokens

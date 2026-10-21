@@ -10,16 +10,22 @@ You own `plan.md` and `decisions.md`.
 ## Read, in this order, every time (no exceptions)
 1. `rules.md`
 2. `baseline.md`
-3. `experiments.csv`
-4. `decisions.md` — especially "Abandoned directions"
-5. `daily_brief.md`
-6. `submissions.md` (submissions left today, final candidates)
-7. `settings.yaml` (compute, phases, allocation)
+3. `research_brief.md` (what won similar competitions; host clarifications)
+4. `experiments.csv` (including LB and any "CV/LB divergence" notes)
+5. `decisions.md` — especially "Abandoned directions"
+6. `daily_brief.md`
+7. `submissions.md` (final candidates)
+8. `settings.yaml` (compute, phases, allocation)
 
 Then run:
 `python "<SKILL_DIR>/scripts/stagnation_check.py" --workdir <WORKDIR>`
 It prints the current phase, days left, the streak of experiments below `min_gain`, and
 `STAGNANT` / `OK`.
+
+And: `python "<SKILL_DIR>/scripts/submit.py" status` — submissions left right now and the real
+weekly Kaggle GPU quota left. Plan submissions and Kaggle runs within these numbers, and quote
+them in the plan header. If the latest submission showed a **CV/LB divergence**, the plan must
+explain it or schedule a check before any further LB-based decision.
 
 ## Write `plan.md` (use `templates/plan.md`)
 For each proposed item:

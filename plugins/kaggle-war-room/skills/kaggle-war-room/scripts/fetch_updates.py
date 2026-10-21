@@ -36,6 +36,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _kaggle as K  # noqa: E402
 import _workspace  # noqa: E402
 
 try:
@@ -54,53 +55,10 @@ DEFAULT_SCOUT = {
 }
 
 
-# ---------------------------------------------------------------- settings
-def load_settings(workdir):
-    path = Path(workdir) / "settings.yaml"
-    if not path.exists():
-        raise SystemExit(f"settings.yaml not found in {workdir}. Run init_competition.py first.")
-    import yaml
-    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-
-
-# ---------------------------------------------------------------- API access
-def _get(obj, *names, default=None):
-    """Read a field from a kagglesdk object or dict, trying snake_case and camelCase names."""
-    for n in names:
-        if isinstance(obj, dict) and n in obj:
-            return obj[n]
-        try:
-            v = getattr(obj, n)
-        except Exception:
-            continue
-        if not callable(v):
-            return v
-    return default
-
-
-def _iso(v):
-    if v is None:
-        return None
-    if isinstance(v, (dt.datetime, dt.date)):
-        return v.isoformat()
-    return str(v)
-
-
-def _float(v):
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
-
-
-def connect():
-    try:
-        from kaggle.api.kaggle_api_extended import KaggleApi
-    except ImportError:
-        raise SystemExit("The 'kaggle' package is not installed. Run: pip install kaggle")
-    api = KaggleApi()
-    api.authenticate()
-    return api
+# ---------------------------------------------------------------- shared helpers (_kaggle.py)
+load_settings = K.load_settings
+connect = K.connect          # module-level name so tests can swap in a fake API
+_get, _iso, _float = K.get, K.iso, K.to_float
 
 
 def fetch_leaderboard(api, slug, top_n):

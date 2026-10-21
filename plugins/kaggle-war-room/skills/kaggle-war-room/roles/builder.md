@@ -50,10 +50,28 @@ If the verdict is reject, stop and tell the Strategist via `plan.md`.
 2. Follow [../references/ensembling.md](../references/ensembling.md): add the most *different*
    strong models first, then check blended CV **and** LB.
 
-## Validate every submission
-`python "<SKILL_DIR>/scripts/check_submission.py" <WORKDIR>/submissions/<exp_id>.csv --sample <data>/sample_submission.csv`
-Fix every error. **Then stop and ask the user before submitting** — every submission needs
-explicit approval. After submitting, record it in `submissions.md`.
+## Submitting (closed loop)
+1. Log the experiment first (`log_experiment.py`), so the submission links to its CV.
+2. Dry run: `python "<SKILL_DIR>/scripts/submit.py" submit <WORKDIR>/submissions/<exp_id>.csv --exp <exp_id> -m "<exp_id> <short desc>"`
+   It validates the file against `submissions.sample_submission`, checks slots left and prints the plan.
+   Code competitions: `submit.py submit submission.csv --kernel <owner>/<infer-slug> [--kernel-version N] --exp <exp_id>`.
+3. **Stop and ask the user**, showing the dry-run output. Only after an explicit yes:
+   the same command with `--yes`.
+4. `python "<SKILL_DIR>/scripts/submit.py" poll --exp <exp_id>` — waits a few minutes at most; exit
+   code 2 means still pending, so run it again later. Once scored it writes the LB
+   into `experiments.csv` and a row into `submissions.md`, and compares LB with CV.
+5. If it prints **CV/LB divergence**, add it to the experiment's notes
+   (`log_experiment.py --update <exp_id> --notes "CV/LB divergence: ..."`) and tell the Strategist.
+   If the submission failed, read the error (and the kernel log for code competitions) before retrying.
+
+## Running on Kaggle GPUs
+When local compute is not enough, or for code competitions, follow
+[../references/kaggle-kernels.md](../references/kaggle-kernels.md) with `kaggle_run.py`:
+`init` → `push --hours <estimate>` (dry run) → user approval when above
+`compute.confirm_if_gpu_hours_over` → `push --yes` → `wait --download` (returns after a few
+minutes with exit code 2 while the run is still going; re-run it later). Read only the tail of
+the downloaded log. Weights go to a **private** dataset via `upload-dataset` (dry run, then
+`--yes` after the user's OK). Never make kernels or datasets public on your own.
 
 ## Logging
 `python "<SKILL_DIR>/scripts/log_experiment.py" --workdir <WORKDIR> --solution ... --changed ... --cv ... [--lb ...] --gpu-hours ... --infer-minutes ... --notes ...`

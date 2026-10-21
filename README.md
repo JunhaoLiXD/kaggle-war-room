@@ -3,14 +3,24 @@
 A multi-role AI-agent workflow for Kaggle competitions, packaged as a plugin for
 **Claude Code** and **Codex**. Computer-vision focused, but the workflow is task-agnostic.
 
-- **Scout** watches public notebooks, the leaderboard and discussions every day and reports only what changed.
-- **Strategist** reads the rules, experiment log and decision log, then plans experiments, compute and submissions.
+- **Scout** watches public notebooks, the leaderboard and discussions every day, reads the threads that changed (host posts flagged), and reports only what changed.
+- **Strategist** reads the rules, a research brief of what won similar past competitions, the experiment log and decision log, then plans experiments, compute and submissions within your real submission slots and GPU quota.
 - **Critic** — ideally a *different vendor's* model — reviews each plan adversarially, without seeing the Strategist's reasoning.
-- **Builder** reviews public notebooks before reusing them, implements, blends, and validates every submission.
+- **Builder** reviews public notebooks before reusing them, implements, blends, runs heavy jobs on Kaggle GPUs when needed, and submits through a closed loop.
 
-Roles hand off through files, scripts do the mechanical work (snapshot diffing, submission
-checks, prediction correlation, stagnation detection), and every risky step stops for your
-confirmation. Final submissions are chosen as a hedged pair to resist leaderboard shake-up.
+Roles hand off through files, scripts do the mechanical work, and every risky step stops for
+your confirmation. Final submissions are chosen as a hedged pair to resist leaderboard shake-up.
+
+What the scripts cover:
+- **Submission loop** — slots left and weekly GPU quota → validated dry run → submit after your
+  yes → wait for the score → LB written to the experiment log and compared with CV (warns on
+  CV/LB divergence). Code competitions submit a kernel.
+- **Past solutions** — find similar ended competitions, pull their top solution writeups, and read
+  discussion threads, all through the official Kaggle API.
+- **Kaggle compute** — push training to Kaggle GPUs, wait, download outputs, and move weights
+  between kernels as private datasets (the usual code-competition setup).
+- **Monitoring and analysis** — snapshot diffing, notebook review with suspicious-code flags,
+  submission checks, prediction correlation for blending, stagnation and phase detection.
 
 ## Install
 
@@ -76,7 +86,9 @@ The plugin never scatters files in your project. Everything it creates is in one
 └── <competition-slug>/   settings.yaml, rules.md, baseline.md, experiments.csv,
     ├── code/             decisions.md, daily_brief.md, plan.md, review.md,
     ├── preds/            submissions.md
-    ├── submissions/
+    ├── submissions/      submission files + receipts of every real submission
+    ├── kernels/          Kaggle kernel folders, run log, downloaded outputs
+    ├── research/         past-solution writeups, discussion threads
     └── snapshots/
 ```
 
@@ -99,8 +111,9 @@ Everything you can change lives in `kaggle-war-room-workspace/<slug>/settings.ya
 ## You are always asked before
 
 - confirming `rules.md` and the baseline
-- every Kaggle submission
-- any experiment estimated above `confirm_if_gpu_hours_over` GPU hours
+- every Kaggle submission (scripts only do a dry run until you say yes)
+- any experiment estimated above `confirm_if_gpu_hours_over` GPU hours, locally or on Kaggle
+- every dataset upload, and making anything public
 - switching phase (explore → refine → finalize)
 - big plan changes caused by the Critic, or overruling the Critic
 - choosing final submissions
@@ -126,7 +139,7 @@ plugins/kaggle-war-room/
     ├── SKILL.md                     Workflow, gates, variables
     ├── config/settings.example.yaml All tunable variables
     ├── roles/                       Scout / Builder / Strategist / Critic playbooks
-    ├── scripts/                     9 Python tools (each has --help)
+    ├── scripts/                     12 Python tools (each has --help)
     ├── references/                  Review checklists, anti-shake-up, ensembling, CV tips
     └── templates/                   Workspace files (rules.md, plan.md, ...)
 ```

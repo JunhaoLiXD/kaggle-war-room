@@ -34,14 +34,15 @@ not skip a check either.
 **Rules**
 - [ ] Does any item violate `rules.md`? (external data, pretrained weights, internet access,
       inference time limit, team code sharing, license of reused public code)
-- [ ] Is a submission count planned that exceeds today's remaining slots?
+- [ ] Is a submission count planned that exceeds the slots left (`submit.py status` numbers in the plan header)?
 - [ ] Does any step rely on hand-labelling test data or using test labels in any form?
 
 **Compute realism**
 - [ ] Are train / inference / TTA / blend times estimated separately?
 - [ ] Are the estimates plausible given past rows in `experiments.csv` for similar models?
       (A plan claiming 1 h for something that took 5 h last time is a blocker.)
-- [ ] Does the total fit the remaining weekly GPU quota and local GPUs?
+- [ ] Does the total fit the remaining weekly GPU quota (real number from `submit.py status`) and local GPUs?
+- [ ] Does any Kaggle run or dataset upload make something public, or lack a dry run / user approval step?
 - [ ] Will final inference (with TTA and every blended model) fit
       `inference_time_limit_hours` with ≥20% margin?
 - [ ] Is any single experiment above `confirm_if_gpu_hours_over` marked for user confirmation?

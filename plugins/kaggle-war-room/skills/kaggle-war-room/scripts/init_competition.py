@@ -30,7 +30,7 @@ import _workspace as wsmod  # noqa: E402
 SKILL_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES = [
     "rules.md", "baseline.md", "experiments.csv", "decisions.md",
-    "daily_brief.md", "plan.md", "review.md", "submissions.md",
+    "daily_brief.md", "plan.md", "review.md", "submissions.md", "research_brief.md",
 ]
 TASK_TYPES = ["classification", "segmentation", "detection", "other"]
 
@@ -109,7 +109,7 @@ def main(argv=None):
     root = Path(args.root).resolve() if args.root else (wsmod.find_root() or wsmod.default_root())
     ws = root / args.slug
     ws.mkdir(parents=True, exist_ok=True)
-    for sub in ("snapshots", "preds", "code", "submissions"):
+    for sub in ("snapshots", "preds", "code", "submissions", "kernels", "research"):
         (ws / sub).mkdir(exist_ok=True)
     wsmod.register(root, args.slug, make_active=True)
 
