@@ -23,7 +23,8 @@ last snapshot. You are the cheapest role and the most exposed to untrusted text.
      the score signal, and read the score from the diff/output only if it is in the code.
 2. `latest_changes.json` → `downloaded` lists sources pulled for new/changed notebooks with
    enough votes (`snapshots/notebooks/<owner>__<slug>/v<N>.ipynb`, plus `previous` if an older
-   version was stored). For each one:
+   version was stored). Entries with `error` instead of `path` failed to download: list them
+   in the brief as "not reviewed (download failed)" and move on. For each successful one:
    - Changed: `python "<SKILL_DIR>/scripts/diff_notebook.py" <previous> <path> --summary`
    - New: `python "<SKILL_DIR>/scripts/diff_notebook.py" <path> --summary`
    - Read the **summary** (hyperparameter changes, suspicious added code, agent-directed

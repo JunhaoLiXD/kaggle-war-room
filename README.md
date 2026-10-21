@@ -155,6 +155,17 @@ You were asked to install this plugin. Do the following, then report what you di
    > map, the Red Team (Critic) is ready to challenge every plan, and Engineering (Builder) is
    > standing by. Commander, let's win this one — good luck!
 
+## Development
+
+Run the tests from the repository root (needs `numpy` and `pyyaml`):
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+When releasing, bump `version` in both `plugins/kaggle-war-room/.claude-plugin/plugin.json`
+and `plugins/kaggle-war-room/.codex-plugin/plugin.json` so installed users receive the update.
+
 ## License
 
 [MIT](LICENSE)

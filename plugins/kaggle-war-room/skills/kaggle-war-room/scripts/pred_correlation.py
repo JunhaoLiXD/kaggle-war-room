@@ -31,7 +31,16 @@ import numpy as np
 HIGHER_IS_BETTER = {"auc": True, "accuracy": True, "dice": True, "logloss": False, "rmse": False, "mae": False}
 
 
+def squeeze_single_column(a):
+    """(n, 1) -> (n,), so a one-column CSV and a 1-D .npy have the same shape."""
+    return a[:, 0] if a.ndim == 2 and a.shape[1] == 1 else a
+
+
 def load(path, id_col=None):
+    return squeeze_single_column(_load_raw(path, id_col))
+
+
+def _load_raw(path, id_col=None):
     path = Path(path)
     if path.suffix == ".npy":
         return np.load(path, allow_pickle=False).astype(np.float64)
@@ -110,7 +119,23 @@ def score(metric, y, p, threshold=0.5):
     raise SystemExit(f"unknown metric {metric}")
 
 
-def greedy_blend(names, preds, flat, y, metric, margin, threshold):
+def check_shapes(preds, y=None):
+    """All predictions must have exactly the same shape. Labels must match the prediction
+    shape, or be one class id per row for (n, k) multi-class probabilities.
+    Returns an error message, or None when everything matches."""
+    shapes = {f: a.shape for f, a in preds.items()}
+    if len(set(shapes.values())) != 1:
+        return f"prediction shapes differ: {shapes}"
+    shape = next(iter(shapes.values()))
+    if y is not None:
+        class_ids = len(shape) == 2 and y.ndim == 1 and y.shape[0] == shape[0]
+        if y.shape != shape and not class_ids:
+            return f"labels have shape {y.shape}, predictions have shape {shape}"
+    return None
+
+
+def greedy_blend(names, preds, flat, y, metric, margin, threshold, idx=None):
+    """idx: the same subsample indices used for `flat`, so the blend is sampled identically."""
     hib = HIGHER_IS_BETTER[metric]
     scores = {n: score(metric, y, preds[n], threshold) for n in names}
     best = max(scores, key=scores.get) if hib else min(scores, key=scores.get)
@@ -122,7 +147,7 @@ def greedy_blend(names, preds, flat, y, metric, margin, threshold):
         rest = [n for n in eligible if n not in chosen]
         if not rest:
             break
-        bflat = blend.ravel()
+        bflat = blend.ravel()[idx] if idx is not None else blend.ravel()
         corrs = {n: float(np.nan_to_num(np.corrcoef(bflat, flat[n])[0, 1])) for n in rest}
         nxt = min(corrs, key=corrs.get)
         new_blend = (blend * len(chosen) + preds[nxt]) / (len(chosen) + 1)
@@ -161,11 +186,11 @@ def main(argv=None):
     if len(files) < 2:
         p.error("need at least two prediction files")
     preds = {f: load(f, args.id_col) for f in files}
-    sizes = {f: a.size for f, a in preds.items()}
-    if len(set(sizes.values())) != 1:
-        raise SystemExit(f"prediction sizes differ: {sizes}")
+    err = check_shapes(preds)
+    if err:
+        raise SystemExit(err)
 
-    n = next(iter(sizes.values()))
+    n = next(iter(preds.values())).size
     idx = None
     if n > args.max_points:
         idx = np.random.default_rng(0).choice(n, args.max_points, replace=False)
@@ -177,9 +202,10 @@ def main(argv=None):
     result = {"files": files, "pearson": pearson.round(6).tolist(), "spearman": spearman.round(6).tolist()}
     if args.labels:
         y = load(args.labels, args.id_col)
-        if y.shape[0] != next(iter(preds.values())).shape[0]:
-            raise SystemExit(f"labels have {y.shape[0]} rows, predictions have {next(iter(preds.values())).shape[0]}")
-        scores, path = greedy_blend(files, preds, flat, y, args.metric, args.margin, args.threshold)
+        err = check_shapes(preds, y)
+        if err:
+            raise SystemExit(err)
+        scores, path = greedy_blend(files, preds, flat, y, args.metric, args.margin, args.threshold, idx)
         result["metric"] = args.metric
         result["scores"] = scores
         result["blend_path"] = path

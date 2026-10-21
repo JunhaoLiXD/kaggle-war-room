@@ -82,7 +82,7 @@ def main(argv=None):
 
     fields = {k: getattr(args, k) for k in COLUMNS[1:] if getattr(args, k, None) is not None}
     for k in NUMERIC & fields.keys():
-        fields[k] = f"{fields[k]:g}"
+        fields[k] = repr(float(fields[k]))  # full precision; ':g' would round to 6 significant digits
     if args.date:
         try:
             dt.date.fromisoformat(args.date)
