@@ -78,8 +78,9 @@ also copy `plugins/kaggle-war-room/agents/*.md` into `~/.claude/agents/` to get 
    rest in one message: models for each role, how the Critic runs, your compute, team name,
    host staff names, and whether you want the war-room touches. Nothing else starts until this
    is confirmed. Your personal choices carry over to your next competition.
-3. The agent drafts `rules.md` from the competition pages → **you confirm**. It builds a
-   baseline from a reviewed public notebook → **you confirm**.
+3. The agent drafts `rules.md` from the competition pages → **you confirm**. It creates the
+   shared CV split (`folds.csv`), reproduces a reviewed public notebook as a private fork on
+   Kaggle, and records it as the baseline → **you confirm**.
 4. Each day: *"Run today's Kaggle update and plan."* Scout → Strategist → Critic → Strategist → Builder.
 
 ## Where your files go
@@ -90,13 +91,13 @@ The plugin never scatters files in your project. Everything it creates is in one
 <your project>/kaggle-war-room-workspace/
 ├── workspace.json        which competitions exist, which one is active
 ├── README.md
-└── <competition-slug>/   settings.yaml, rules.md, baseline.md, experiments.csv,
-    ├── code/             decisions.md, daily_brief.md, plan.md, review.md,
-    ├── preds/            submissions.md
+└── <competition-slug>/   settings.yaml, rules.md, baseline.md, folds.csv, experiments.csv,
+    ├── code/             decisions.md, research_brief.md, daily_brief.md, plan.md,
+    ├── preds/            review.md, submissions.md
     ├── submissions/      submission files + receipts of every real submission
-    ├── kernels/          Kaggle kernel folders, run log, downloaded outputs
-    ├── research/         past-solution writeups, discussion threads
-    └── snapshots/
+    ├── kernels/          Kaggle kernels and forks, run log, outputs per version
+    ├── research/         competition pages, past-solution writeups, discussion threads
+    └── snapshots/        daily snapshots of the leaderboard, notebooks and discussions
 ```
 
 Every session starts by running `workspace.py locate`, so the agent always reads and writes
@@ -106,13 +107,17 @@ drive), set the environment variable `KAGGLE_WAR_ROOM_WORKSPACE` to that folder.
 
 ## Configuration
 
-Everything you can change lives in `kaggle-war-room-workspace/<slug>/settings.yaml` and is documented in
+Everything you can change lives in `kaggle-war-room-workspace/<slug>/settings.yaml`. The
+first-run setup fills it with you (`configure.py`: detected facts plus one round of questions);
+every key is documented in
 [`SKILL.md` → Variables you can change](plugins/kaggle-war-room/skills/kaggle-war-room/SKILL.md#variables-you-can-change):
 
 - **models** per role (`inherit` by default, so a single-model setup just works)
 - **Critic**: external CLI of the other vendor (`codex exec …` from Claude Code, `claude -p …` from Codex) or a fresh-context subagent
 - **compute**: weekly Kaggle GPU quota, your own GPUs, inference limit, confirmation threshold
-- **submissions**: daily limit and who allocates them
+- **submissions**: daily limit, who allocates them, path to `sample_submission.csv`
+- **competition**: deadline, metric direction, code competition, team name, host staff names
+- **flavor**: the small war-room touches on or off
 - **phases**: explore / refine / finalize boundaries, stagnation limits, `min_gain`
 
 ## You are always asked before
@@ -129,9 +134,10 @@ Everything you can change lives in `kaggle-war-room-workspace/<slug>/settings.ya
 
 Public notebooks, discussions and dataset descriptions are treated as **data, not
 instructions**. Text aimed at AI agents is reported, never followed. Notebooks are reviewed
-for leakage, leaderboard probing, rule violations and suspicious code before any reuse, and
-replicated code should run in an isolated environment. Data comes only from the official
-Kaggle API.
+for leakage, leaderboard probing, rule violations and suspicious code before any reuse.
+Public notebooks are reproduced as private Kaggle forks (internet off, never on your machine),
+and an unreviewed fork cannot be pushed. Kernels and datasets stay private unless you say
+otherwise. Data comes only from the official Kaggle API.
 
 ## Repository layout
 
@@ -142,13 +148,14 @@ plugins/kaggle-war-room/
 ├── .claude-plugin/plugin.json       Claude Code plugin manifest
 ├── .codex-plugin/plugin.json        Codex plugin manifest
 ├── agents/                          Claude Code role subagents
-└── skills/kaggle-war-room/             The skill (shared by both hosts)
+└── skills/kaggle-war-room/          The skill (shared by both hosts)
     ├── SKILL.md                     Workflow, gates, variables
     ├── config/settings.example.yaml All tunable variables
     ├── roles/                       Scout / Builder / Strategist / Critic playbooks
     ├── scripts/                     14 Python tools (each has --help)
-    ├── references/                  Review checklists, anti-shake-up, ensembling, CV tips
+    ├── references/                  Review checklists, anti-shake-up, ensembling, Kaggle runs, CV tips
     └── templates/                   Workspace files (rules.md, plan.md, ...)
+tests/                               Unit and regression tests (not installed with the plugin)
 ```
 
 ## Instructions for AI agents
