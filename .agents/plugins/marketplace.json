@@ -1,0 +1,20 @@
+{
+  "name": "kaggle-war-room",
+  "interface": {
+    "displayName": "Kaggle War Room"
+  },
+  "plugins": [
+    {
+      "name": "kaggle-war-room",
+      "source": {
+        "source": "local",
+        "path": "./plugins/kaggle-war-room"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

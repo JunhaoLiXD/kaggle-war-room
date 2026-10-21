@@ -1,0 +1,17 @@
+{
+  "name": "kaggle-war-room",
+  "description": "Kaggle competition agent workflow for Claude Code and Codex",
+  "owner": {
+    "name": "JunhaoLiXD",
+    "url": "https://github.com/JunhaoLiXD"
+  },
+  "plugins": [
+    {
+      "name": "kaggle-war-room",
+      "source": "./plugins/kaggle-war-room",
+      "description": "Multi-role Kaggle workflow: Scout, Builder, Strategist and an independent Critic, with monitoring, replication, ensembling and anti-shake-up scripts.",
+      "category": "machine-learning",
+      "tags": ["kaggle", "computer-vision", "competition"]
+    }
+  ]
+}

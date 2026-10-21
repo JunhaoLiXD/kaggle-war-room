@@ -1,0 +1,28 @@
+{
+  "name": "kaggle-war-room",
+  "version": "0.1.0",
+  "description": "Multi-role agent workflow for Kaggle competitions: daily monitoring of public notebooks and discussions, notebook review and replication, ensembling, adversarial plan review, and anti-shake-up final submissions.",
+  "author": {
+    "name": "JunhaoLiXD",
+    "url": "https://github.com/JunhaoLiXD"
+  },
+  "homepage": "https://github.com/JunhaoLiXD/kaggle-war-room",
+  "repository": "https://github.com/JunhaoLiXD/kaggle-war-room",
+  "license": "MIT",
+  "keywords": ["kaggle", "competition", "computer-vision", "ensembling", "machine-learning", "agents"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Kaggle War Room",
+    "shortDescription": "Run Kaggle competitions with a multi-role agent workflow",
+    "longDescription": "Scout monitors public notebooks, leaderboard and discussions; Strategist plans experiments and submissions; an independent Critic reviews each plan; Builder reviews, replicates and blends solutions. Includes scripts for snapshot diffing, submission checks, prediction correlation and stagnation detection.",
+    "developerName": "JunhaoLiXD",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "websiteURL": "https://github.com/JunhaoLiXD/kaggle-war-room",
+    "defaultPrompt": [
+      "Start a new Kaggle competition workspace",
+      "Run today's Kaggle update and plan",
+      "Help me choose my final submissions"
+    ]
+  }
+}

@@ -1,0 +1,54 @@
+# kaggle-war-room settings — copied into kaggle-war-room-workspace/<slug>/settings.yaml by init_competition.py.
+# Every value here is safe to edit. Comments explain each key.
+
+flavor: true                      # small war-room touches at a few key moments; false = plain output
+
+competition:
+  slug: <comp-slug>               # filled in by init_competition.py
+  deadline: null                  # final submission deadline, YYYY-MM-DD (UTC). Drives phases.
+  task_type: null                 # classification | segmentation | detection | other
+  team_name: null                 # your team name on the leaderboard (for rank tracking)
+
+metric:
+  name: null                      # e.g. auc, dice, map@0.5:0.95 — copy from rules.md
+  higher_is_better: true          # false for loss-like metrics (rmse, logloss)
+
+models:                           # The ONLY place to choose models. One model? Leave everything `inherit`.
+  # Use your host's model names. Claude Code: haiku | sonnet | opus (passed to the subagent call).
+  # Codex: any model name accepted by `codex exec -m`. `inherit` = the main session's model.
+  scout:      inherit             # cheap + fast is enough (e.g. haiku)
+  builder:    inherit             # main coding model (e.g. sonnet)
+  strategist: inherit             # strongest reasoning model (e.g. opus)
+  critic: external                # external = critic_command below; subagent = fresh-context role on this host
+  critic_model: inherit           # model for the Critic when it runs as a subagent
+  # Best practice: the Critic should be the OTHER vendor's model. Run from {workdir}.
+  #   On Claude Code:  codex exec -s read-only --skip-git-repo-check -C {workdir} -o {workdir}/review.md
+  #   On Codex:        claude -p --permission-mode acceptEdits --allowedTools Read,Write,Glob,Grep --add-dir {skill_dir}
+  critic_command: >-
+    codex exec -s read-only --skip-git-repo-check -C {workdir} -o {workdir}/review.md
+
+compute:                          # Defaults assume Kaggle's free quota. Add your own GPUs.
+  kaggle_gpu_hours_per_week: 30
+  local_gpus: []                  # e.g. [{name: RTX 4090, vram_gb: 24, hours_per_day: 8}]
+  inference_time_limit_hours: null   # code competitions only; rules.md is the source of truth
+  confirm_if_gpu_hours_over: 4       # ask the user before any single experiment above this
+
+submissions:
+  daily_limit: 5                  # must match the competition rules
+  allocation: strategist          # strategist = decided daily in plan.md; integer = fixed per day
+  final_picks: 2                  # number of final submissions allowed
+
+phases:                           # Ratio of exploration vs. fine-tuning by days left.
+  explore:  { until_days_left: 30, stagnation_limit: 3, focus: "try many directions" }
+  refine:   { until_days_left: 10, stagnation_limit: 6, focus: "fine-tune the strongest direction" }
+  finalize: { until_days_left: 0,  focus: "blend and choose final submissions" }
+  min_gain: 0.001                 # CV improvement below this counts as "no real change"
+
+scout:
+  notebooks_to_track: 30          # top-N public notebooks per sort order, pulled each day
+  notebook_sorts: [voteCount, scoreDescending]   # any of: voteCount, scoreDescending, dateRun, hotness, commentCount
+  topics_to_track: 30             # top-N discussion topics pulled each day
+  topic_sort: active              # hot | top | new | recent | active
+  leaderboard_top_n: 50           # rows of the public LB kept in each snapshot
+  min_votes_to_download: 5        # only download/diff new or changed notebooks with at least this many votes
+  max_downloads_per_run: 10       # cap on notebook source downloads per run

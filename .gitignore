@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Never commit credentials
+kaggle.json
+.kaggle/
+.env
+
+# Local competition workspaces and data
+kaggle-war-room-workspace/
+*.npy
+*.ipynb_checkpoints
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
