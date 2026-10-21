@@ -40,15 +40,32 @@ def render(text, slug, today):
 
 
 def make_settings(slug, deadline, task_type, team_name):
+    import configure
     text = (SKILL_DIR / "config" / "settings.example.yaml").read_text(encoding="utf-8")
-    text = text.replace("slug: <comp-slug>", f"slug: {slug}", 1)
-    if deadline:
-        text = re.sub(r"(\n  deadline: )null", rf"\g<1>{deadline}", text, count=1)
-    if task_type:
-        text = re.sub(r"(\n  task_type: )null", rf"\g<1>{task_type}", text, count=1)
-    if team_name:
-        text = re.sub(r"(\n  team_name: )null", rf'\g<1>"{team_name}"', text, count=1)
+    values = {"competition.slug": slug, "competition.deadline": dt.date.fromisoformat(deadline) if deadline else None,
+              "competition.task_type": task_type, "competition.team_name": team_name}
+    for key, value in values.items():
+        if value is not None:
+            text = configure.set_key(text, key, value)
     return text
+
+
+def copy_personal(text, previous_settings):
+    """Carry personal choices (models, compute, flavor, username) over from the previous competition."""
+    import yaml
+    import configure
+    prev = yaml.safe_load(previous_settings.read_text(encoding="utf-8")) or {}
+    copied = []
+    for key in configure.PERSONAL_KEYS:
+        value = configure.get_key(prev, key)
+        if value is None:
+            continue
+        try:
+            text = configure.set_key(text, key, value)
+            copied.append(key)
+        except (KeyError, ValueError):
+            continue
+    return text, copied
 
 
 def flavor_on(settings_path):
@@ -107,6 +124,7 @@ def main(argv=None):
             p.error("--deadline must be YYYY-MM-DD")
 
     root = Path(args.root).resolve() if args.root else (wsmod.find_root() or wsmod.default_root())
+    previous = wsmod.load_index(root).get("active")  # personal settings are copied from here
     ws = root / args.slug
     ws.mkdir(parents=True, exist_ok=True)
     for sub in ("snapshots", "preds", "code", "submissions", "kernels", "research"):
@@ -115,8 +133,13 @@ def main(argv=None):
 
     today = dt.date.today().isoformat()
     created, skipped = [], []
-    write(ws / "settings.yaml", make_settings(args.slug, args.deadline, args.task_type, args.team_name),
-          args.force, created, skipped)
+    settings_text = make_settings(args.slug, args.deadline, args.task_type, args.team_name)
+    copied = []
+    if previous and previous != args.slug and (root / previous / "settings.yaml").exists():
+        settings_text, copied = copy_personal(settings_text, root / previous / "settings.yaml")
+    write(ws / "settings.yaml", settings_text, args.force, created, skipped)
+    if "settings.yaml" not in created:
+        copied = []
     for name in TEMPLATES:
         src = SKILL_DIR / "templates" / name
         write(ws / name, render(src.read_text(encoding="utf-8"), args.slug, today), args.force, created, skipped)
@@ -129,12 +152,13 @@ def main(argv=None):
         print("Created:  " + ", ".join(created))
     if skipped:
         print("Kept existing (use --force to overwrite): " + ", ".join(skipped))
-    print("\nNext steps:")
-    print(f"  1. Edit {ws / 'settings.yaml'} (models, compute, submissions, deadline).")
-    print("  2. Read the competition pages and fill rules.md (references/rules-checklist.md).")
-    print("  3. Ask the user to confirm rules.md, then build the baseline.")
-    if not args.deadline:
-        print("  ! No --deadline given: set competition.deadline in settings.yaml so phases work.")
+    if copied:
+        print(f"Copied your personal settings from '{previous}': {', '.join(copied)}")
+    print("\nNext steps - first-run setup (settings.yaml is not confirmed yet):")
+    print("  1. configure.py detect --write   (deadline, metric, limits, username, GPUs, sample_submission)")
+    print("  2. configure.py                  (checklist: ask the user everything in ONE message)")
+    print("  3. configure.py set KEY=VALUE ... then configure.py done")
+    print("  4. Read the competition pages, fill rules.md (references/rules-checklist.md), confirm with the user.")
     return 0
 
 

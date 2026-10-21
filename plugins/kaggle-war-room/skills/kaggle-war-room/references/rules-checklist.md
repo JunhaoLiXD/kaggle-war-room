@@ -1,7 +1,8 @@
 # Rules checklist (Phase 0)
 
-Read **Overview, Evaluation, Rules, Data** pages in full (via the official `kaggle` CLI/API
-where possible, otherwise ask the user to paste the page text). Fill every item in
+Run `research.py pages` to save the pages to `research/pages/<slug>/`, then read
+**Evaluation** and **Rules** in full and Overview/Data as needed (if the API returns nothing,
+ask the user to accept the rules on Kaggle or paste the text). Fill every item in
 `rules.md`. Write "not stated" rather than guessing; list unclear items for the user.
 
 ## Must extract

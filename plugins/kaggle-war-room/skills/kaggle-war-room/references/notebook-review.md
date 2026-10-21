@@ -52,5 +52,6 @@ Any hit in section 5 → do not run the notebook as-is. Rewrite the needed parts
 - **replicate with changes** — list each change (e.g. "fix group k-fold", "drop LB-tuned threshold").
 - **reject** — reason.
 
-Run replicated code only in an isolated environment (Kaggle kernel, container, venv
-without your credentials).
+Run replicated code only in an isolated environment. Preferred: a private Kaggle fork
+(`kaggle_run.py fork`) - inputs stay on Kaggle and your machine never runs the code. Otherwise a
+container or venv without your credentials.

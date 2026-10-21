@@ -66,7 +66,8 @@ not skip a check either.
       LR changes while major directions are still untested? That's a major finding.
 - [ ] **Diversity**: are the directions genuinely different, or variants of one idea?
 - [ ] **CV trustworthiness**: does the split respect groups (patient, scene, video, site),
-      time, and class balance? Does CV rank models the same way the public LB did in the
+      time, and class balance? Check `folds.json` (groups split across folds must be 0,
+      class-share gaps small). Does CV rank models the same way the public LB did in the
       experiments so far? Is fold variance reported?
 - [ ] **Cheap first**: could each idea be tested at lower resolution / fewer epochs / one fold first?
 - [ ] **Baseline drift**: are comparisons made against `baseline.md` on the same folds?

@@ -26,19 +26,20 @@ workflow files to the project root or anywhere else.
 ├── workspace.json        index: registered competitions + the active one
 ├── README.md
 └── <slug>/               = WORKDIR
-    ├── settings.yaml  rules.md  baseline.md  experiments.csv  decisions.md
+    ├── settings.yaml  rules.md  baseline.md  experiments.csv  decisions.md  folds.csv
     ├── daily_brief.md  plan.md  review.md  submissions.md  research_brief.md
     ├── code/             training / inference / blending code
     ├── preds/            OOF + test predictions
     ├── submissions/      submission files + receipts.jsonl (every real submission)
     ├── kernels/          Kaggle kernel folders, runs.jsonl, datasets.jsonl, downloaded outputs
-    ├── research/         past-solution writeups, discussion threads, similar.json
+    ├── research/         competition pages, past-solution writeups, discussion threads
     └── snapshots/        fetched snapshots, notebook sources, diffs
 ```
 
 **First action of every session and every role:**
 `python "<SKILL_DIR>/scripts/workspace.py" locate` → prints the absolute WORKDIR.
 - Exit code 1 / "No kaggle-war-room-workspace" → no competition yet; run Phase 0.
+- "NOTE: first-run setup not finished" → do **First-run setup** (Phase 0 step 2) before anything else.
 - Several competitions: `workspace.py list`, switch with `workspace.py use <slug>`.
 - All scripts that read the workspace find WORKDIR by themselves; pass `--workdir` only to override.
 - The root is searched upward from the current directory; env var `KAGGLE_WAR_ROOM_WORKSPACE`
@@ -90,17 +91,36 @@ After install:
 
 1. From the project root: `python "<SKILL_DIR>/scripts/init_competition.py" <comp-slug> --deadline YYYY-MM-DD`
    (creates `kaggle-war-room-workspace/<slug>/`, registers it and makes it active).
-2. Edit `<WORKDIR>/settings.yaml` (see **Variables you can change**).
-3. Read the competition's Overview, Evaluation, Rules and Data pages in full. Extract every
-   item in [references/rules-checklist.md](references/rules-checklist.md) into `rules.md`.
+2. **First-run setup** — settle every personal and competition-specific choice before any work:
+   1. `configure.py detect --write` — fills what can be looked up: deadline, metric, daily limit,
+      code competition, Kaggle username, local GPUs, sample_submission path. Never overwrites
+      the user's own values. If the API is not set up yet, it says so; continue with the rest.
+   2. `configure.py` — prints the checklist (models per role, Critic mode and command, compute,
+      competition facts, team name, host staff names, task type, flavor) with current values.
+   3. Ask the user **everything in one message** (use the host's question UI if it has one),
+      grouped as in the checklist, each with the current value and your recommendation for this
+      host — Claude Code: Scout `haiku`, Builder `sonnet`, Strategist `opus`, Critic `external`
+      via `codex exec`; Codex: role models by name, Critic via `claude -p`; one model only:
+      `inherit` everywhere. Mark detected facts as "detected - please confirm".
+      Values copied from the user's previous competition only need a quick confirmation.
+   4. Write answers with `configure.py set KEY=VALUE ...`, re-run `configure.py` until no
+      REQUIRED item is missing, then `configure.py done`.
+3. `research.py pages` saves the competition's pages (overview, evaluation, rules, data) to
+   `research/pages/<slug>/` with their sizes. Read evaluation and rules in full, the rest as
+   needed, and extract every item in [references/rules-checklist.md](references/rules-checklist.md)
+   into `rules.md`, citing the page file.
 4. **CONFIRM with user: `rules.md`.**
 5. Research before modeling ([references/past-solutions.md](references/past-solutions.md)):
    `research.py similar "<task keywords>"` → `research.py writeups --slug <past-slug> --fetch`
    for the 2–4 most similar ended competitions, and `research.py discussions --sticky` for host
    posts. Summarize into `research_brief.md` (what won, what failed, CV schemes, tricks, costs).
-6. Build the CV split. Pick a top public notebook, review it with
-   [references/notebook-review.md](references/notebook-review.md), replicate it, and record its
-   CV and public LB in `baseline.md`. All later experiments compare to this baseline.
+6. Build the CV split with `make_folds.py <train.csv> --id <id> --target <y> [--group <unit>]`
+   (`--group` = the unit that must never be split: patient, scene, video, site; `--time` for
+   time-ordered data). It writes `folds.csv` + `folds.json`; every experiment uses this file.
+   Pick a top public notebook, review it with
+   [references/notebook-review.md](references/notebook-review.md), reproduce it on Kaggle with
+   `kaggle_run.py fork` (no downloads; inputs stay on Kaggle), and record its CV and public LB in
+   `baseline.md`. All later experiments compare to this baseline.
 7. **CONFIRM with user: baseline.**
 
 ## Daily loop
@@ -196,6 +216,8 @@ All live in `kaggle-war-room-workspace/<slug>/settings.yaml` (copied from
 | `models.critic` | `external` | `external` (run `critic_command`, ideally the other vendor's CLI) or `subagent` (fresh context on this host) |
 | `models.critic_command` | `codex exec -s read-only …` | CLI for an external Critic; `{workdir}` / `{skill_dir}` are substituted. Examples for both hosts in the file |
 | `models.critic_model` | `inherit` | Model for the Critic when it runs as a subagent |
+| `setup_complete` | `false` | Set by `configure.py done` after the first-run checklist was confirmed |
+| `competition.code_competition` | `null` | Submissions only from a Kaggle notebook (detected); then `inference_time_limit_hours` is required |
 | `competition.deadline` | `null` | Final deadline (YYYY-MM-DD); drives phase detection |
 | `competition.team_name` | `null` | Your leaderboard team name, so the Scout can track your rank |
 | `compute.kaggle_gpu_hours_per_week` | `30` | Kaggle free GPU quota |
@@ -235,6 +257,7 @@ checked against weekly GPU quota and the inference limit.
 
 | Script | Purpose |
 |---|---|
+| `configure.py` | First-run setup: `detect --write`, checklist, `set KEY=VALUE`, `done`; personal choices carry over to new competitions |
 | `workspace.py` | `locate` the active WORKDIR, `list` competitions, `use <slug>` to switch |
 | `init_competition.py` | Create `kaggle-war-room-workspace/<slug>/` with all templates; register + activate it |
 | `fetch_updates.py` | Pull leaderboard, notebook list, discussions via kaggle API; diff against last snapshot |
@@ -245,8 +268,9 @@ checked against weekly GPU quota and the inference limit.
 | `log_experiment.py` | Append one row to `experiments.csv` |
 | `stagnation_check.py` | Current phase + whether progress has stalled |
 | `submit.py` | `status` (slots, GPU quota), `submit` (checked dry run; `--yes` after approval), `poll` (score → experiments.csv, LB vs CV) |
-| `research.py` | `similar` past competitions, `writeups` of winning solutions, `discussions` thread contents (host posts flagged) |
-| `kaggle_run.py` | Run code on Kaggle GPUs (`init`, `push`, `wait`, `output`) and `upload-dataset` (private) |
+| `research.py` | `pages` (rules/evaluation/data text), `similar` past competitions, `writeups` of winning solutions, `discussions` thread contents (host posts flagged) |
+| `make_folds.py` | The shared CV split: kfold / stratified / group / stratified-group / time → `folds.csv` + balance report; never overwritten without `--force` |
+| `kaggle_run.py` | Run code on Kaggle GPUs (`init`, `fork` a public notebook privately, `push`, `wait`, `output`) and `upload-dataset` (private) |
 
 ## References (read when relevant)
 

@@ -22,6 +22,7 @@ Examples:
   python workspace.py use my-other-comp
 """
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -51,10 +52,16 @@ def main(argv=None):
         print(root)
     elif args.cmd == "locate":
         try:
-            print(ws.resolve_workdir())
+            workdir = ws.resolve_workdir()
         except SystemExit as e:
             print(e, file=sys.stderr)
             return 1
+        print(workdir)
+        settings = workdir / "settings.yaml"
+        if settings.exists() and not re.search(r"(?m)^setup_complete:\s*true\b",
+                                               settings.read_text(encoding="utf-8"), re.I):
+            print("NOTE: first-run setup not finished - run configure.py (detect --write, checklist, done) "
+                  "before anything else.", file=sys.stderr)
     elif args.cmd == "list":
         if not comps:
             print("(no competitions)")

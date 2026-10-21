@@ -15,10 +15,14 @@ What the scripts cover:
 - **Submission loop** — slots left and weekly GPU quota → validated dry run → submit after your
   yes → wait for the score → LB written to the experiment log and compared with CV (warns on
   CV/LB divergence). Code competitions submit a kernel.
-- **Past solutions** — find similar ended competitions, pull their top solution writeups, and read
-  discussion threads, all through the official Kaggle API.
+- **Research** — save the competition's rules / evaluation / data pages, find similar ended
+  competitions, pull their solution writeups (Kaggle's writeups category), and read discussion
+  threads, all through the official Kaggle API.
+- **CV split** — one shared `folds.csv` (stratified, grouped by patient/scene/site, or by time)
+  with a balance report, protected from silent changes.
 - **Kaggle compute** — push training to Kaggle GPUs, wait, download outputs, and move weights
-  between kernels as private datasets (the usual code-competition setup).
+  between kernels as private datasets (the usual code-competition setup). Public notebooks are
+  reproduced as private forks on Kaggle with their inputs and environment - nothing to download.
 - **Monitoring and analysis** — snapshot diffing, notebook review with suspicious-code flags,
   submission checks, prediction correlation for blending, stagnation and phase detection.
 
@@ -68,9 +72,12 @@ also copy `plugins/kaggle-war-room/agents/*.md` into `~/.claude/agents/` to get 
 
 ## Quick start
 
-1. In your project folder, tell the agent: *"Start a Kaggle competition workspace for `<competition-slug>`, deadline YYYY-MM-DD."*
-2. Edit `kaggle-war-room-workspace/<slug>/settings.yaml` — at least `competition.deadline`, `competition.team_name`,
-   `metric.higher_is_better`, and optionally `models.*`.
+1. In your project folder, tell the agent: *"Start a Kaggle competition workspace for `<competition-slug>`."*
+2. **First-run setup.** The agent looks up what it can (deadline, metric, daily limit, code
+   competition, your Kaggle username, local GPUs, `sample_submission.csv`), then asks you the
+   rest in one message: models for each role, how the Critic runs, your compute, team name,
+   host staff names, and whether you want the war-room touches. Nothing else starts until this
+   is confirmed. Your personal choices carry over to your next competition.
 3. The agent drafts `rules.md` from the competition pages → **you confirm**. It builds a
    baseline from a reviewed public notebook → **you confirm**.
 4. Each day: *"Run today's Kaggle update and plan."* Scout → Strategist → Critic → Strategist → Builder.
@@ -139,7 +146,7 @@ plugins/kaggle-war-room/
     ├── SKILL.md                     Workflow, gates, variables
     ├── config/settings.example.yaml All tunable variables
     ├── roles/                       Scout / Builder / Strategist / Critic playbooks
-    ├── scripts/                     12 Python tools (each has --help)
+    ├── scripts/                     14 Python tools (each has --help)
     ├── references/                  Review checklists, anti-shake-up, ensembling, CV tips
     └── templates/                   Workspace files (rules.md, plan.md, ...)
 ```
@@ -162,7 +169,9 @@ You were asked to install this plugin. Do the following, then report what you di
 3. Do **not** ask for, read, or write the Kaggle API key. Tell the user to save their token to
    `~/.kaggle/kaggle.json` themselves.
 4. Tell the user to start a new session (Claude Code: or run `/reload-plugins`) and that they
-   can begin with: *"Start a Kaggle competition workspace for `<slug>`."*
+   can begin with: *"Start a Kaggle competition workspace for `<slug>`."* Mention that the first
+   step will be a short setup round (models per role, Critic, compute, team and host names), so
+   they can have their choices ready.
 5. End your report with this welcome, once, in the user's language:
    > 🎖️ The war room is open. Scout is heading out for recon, the Strategist is laying out the
    > map, the Red Team (Critic) is ready to challenge every plan, and Engineering (Builder) is

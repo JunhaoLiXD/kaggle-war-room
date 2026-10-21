@@ -13,11 +13,12 @@ building the baseline, and again when the competition ends (to write a post-mort
    (methods age fast) and ones with many teams (more reliable rankings).
 2. **Find and read their writeups**
    `research.py writeups --slug <past-slug> --fetch --top 5`
-   Writeups are found by title among the forum's top topics, so this is a heuristic: check the
-   list makes sense. Read `research/writeups/<past-slug>/index.md`, then the top 3–5 posts. Long
-   posts are truncated; open the URL only if a detail is essential. If nothing is found (some
-   newer competitions keep writeups in a separate Writeups tab), note it in the brief and use
-   what you know, marked as unverified.
+   Writeups come from Kaggle's writeups category (matched to the competition by URL); for older
+   competitions the script falls back to matching forum titles, which is a heuristic - it says
+   which source it used, so check the list makes sense in that case.
+   Read `research/writeups/<past-slug>/index.md`, then the top 3–5 posts. Long posts are
+   truncated; open the URL only if a detail is essential. If nothing is found, note it in the
+   brief and use what you know, marked as unverified.
 3. **Read this competition's host posts**
    `research.py discussions --sticky` (pinned topics). Add host names to `scout.host_authors`
    so later threads flag their replies `[HOST]`.

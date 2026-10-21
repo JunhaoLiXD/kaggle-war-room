@@ -34,10 +34,18 @@ Run through [../references/notebook-review.md](../references/notebook-review.md)
 Do **not** copy-paste wholesale. Rewrite into your own pipeline, keeping only reviewed parts.
 If the verdict is reject, stop and tell the Strategist via `plan.md`.
 
+**Reproducing a notebook's score** (baseline, or checking a public claim): don't download its
+data or models. `kaggle_run.py fork <owner/slug>` makes your own private copy with the same
+inputs and Docker image, internet off, plus `FORK.md` (provenance, automatic scan, checklist).
+Review it, switch it to the shared `folds.csv` (upload it as a private dataset, `--add-dataset`),
+then `push --reviewed --hours …` (dry run first) and `wait --download` as for any Kaggle run.
+Pushes of an unreviewed fork are refused.
+
 ## Implementation rules
 - Every change must obey `rules.md` (external data, pretrained weights, internet, time limit).
-- Use the CV split defined in `baseline.md`. Never change folds silently — changing the split
-  invalidates comparison with every past experiment.
+- Use `<WORKDIR>/folds.csv` (made by `make_folds.py`, described in `baseline.md`) for every
+  experiment, including replicated notebooks — replace their own split. Never change folds
+  silently: a new split invalidates comparison with every past experiment.
 - Save OOF predictions and test predictions for every model as
   `<WORKDIR>/preds/<exp_id>_oof.npy` and `<WORKDIR>/preds/<exp_id>_test.npy` (plus an ids file). The blender
   and `pred_correlation.py` depend on them.

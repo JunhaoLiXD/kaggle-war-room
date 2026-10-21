@@ -33,6 +33,23 @@ kaggle_run.py init infer --code code/infer.py --gpu --dataset <owner>/<comp>-wei
 ```
 Log every run in `experiments.csv` with real GPU hours (from the run, not the estimate).
 
+## Reproducing a public notebook (fork)
+```
+kaggle_run.py fork owner/notebook-slug                 # private copy, inputs + Docker image kept, internet off
+kaggle_run.py fork owner/notebook-slug --add-dataset me/<comp>-folds   # with your shared folds.csv
+kaggle_run.py push notebook-slug --hours 2 --reviewed  # dry run; refused until you pass --reviewed
+```
+- Nothing is downloaded: competition data, datasets, models and kernel outputs stay mounted on
+  Kaggle under the same `/kaggle/input/...` paths, and the original Docker image is kept, so a
+  score gap is not an environment difference.
+- Read `FORK.md`: provenance, what the fork changed, and an automatic scan for network calls,
+  shell commands, obfuscated code and text addressed to AI agents.
+- If the original needed internet (pip installs, downloads), the fork fails offline - replace
+  those with dataset/model sources, or re-fork with `--keep-internet` only for exploration (code
+  competitions score offline).
+- Only download to your machine when you have a local GPU and must iterate on one part; even
+  then download the competition data, not the models.
+
 ## Before pushing
 - Estimate GPU hours and pass `--hours`; compare with `submit.py status` (weekly quota left).
 - Smoke-test locally on a tiny subset first (1 fold, few steps) — failed Kaggle runs waste quota.

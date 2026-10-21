@@ -1,7 +1,9 @@
 # kaggle-war-room settings — copied into kaggle-war-room-workspace/<slug>/settings.yaml by init_competition.py.
 # Every value here is safe to edit. Comments explain each key.
+# First run: `configure.py detect --write`, then `configure.py` lists what you still need to decide.
 
-kaggle_username: null             # your Kaggle username (owner of kernels/datasets); auto-detected if possible
+setup_complete: false             # set by `configure.py done` after you confirmed the setup checklist
+kaggle_username: null            # your Kaggle username (owner of kernels/datasets); auto-detected if possible
 flavor: true                      # small war-room touches at a few key moments; false = plain output
 
 competition:
@@ -9,6 +11,7 @@ competition:
   deadline: null                  # final submission deadline, YYYY-MM-DD (UTC). Drives phases.
   task_type: null                 # classification | segmentation | detection | other
   team_name: null                 # your team name on the leaderboard (for rank tracking)
+  code_competition: null          # true if submissions must be made from a Kaggle notebook (auto-detected)
 
 metric:
   name: null                      # e.g. auc, dice, map@0.5:0.95 — copy from rules.md
