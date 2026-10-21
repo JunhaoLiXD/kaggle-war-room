@@ -1,4 +1,4 @@
-"""Regression tests for bugs fixed in 0.1.1, plus a --help smoke test for every script.
+"""Regression tests for bugs fixed in 0.1.1 and 0.1.2, plus a --help smoke test for every script.
 
 Run from the repository root (needs numpy and pyyaml):
     python -m unittest discover -s tests -v
@@ -132,6 +132,99 @@ class TestDownloadFailureSummary(unittest.TestCase):
         self.assertIn("alice/ok: /x/v2.ipynb", text)
         self.assertIn("Download failures (1)", text)
         self.assertIn("bob/broken: timeout", text)
+
+
+class FakeApi:
+    """Stands in for KaggleApi: kernels_pull fails while `failing` contains the ref."""
+
+    def __init__(self, failing=()):
+        self.failing = set(failing)
+        self.calls = []
+
+    def kernels_pull(self, ref, path, metadata=False, quiet=True):
+        self.calls.append(ref)
+        if ref in self.failing:
+            raise TimeoutError("timeout")
+        Path(path, "nb.ipynb").write_text('{"cells": []}', encoding="utf-8")
+
+
+class TestDownloadRetry(Tmp):
+    """Bug 5: a failed (or over-the-cap) notebook download was never retried on later runs,
+    because only new / version-changed notebooks were download candidates."""
+
+    def setUp(self):
+        super().setUp()
+        self.ws = self.dir / "ws"
+        self.ws.mkdir()
+        (self.ws / "settings.yaml").write_text(
+            "competition:\n  slug: demo\nscout:\n  min_votes_to_download: 1\n  max_downloads_per_run: 10\n",
+            encoding="utf-8")
+        self.notebooks = []
+        self.api = FakeApi()
+        self._saved = {k: getattr(fetch_updates, k) for k in
+                       ("connect", "fetch_leaderboard", "fetch_topics", "fetch_notebooks")}
+        fetch_updates.connect = lambda: self.api
+        fetch_updates.fetch_leaderboard = lambda *a: []
+        fetch_updates.fetch_topics = lambda *a: []
+        fetch_updates.fetch_notebooks = lambda *a: [dict(n) for n in self.notebooks]
+        self.day = 0
+
+    def tearDown(self):
+        for k, v in self._saved.items():
+            setattr(fetch_updates, k, v)
+        super().tearDown()
+
+    def run_day(self):
+        self.day += 1
+        with contextlib.redirect_stdout(io.StringIO()):
+            fetch_updates.main(["--workdir", str(self.ws), "--timestamp", f"2026102{self.day}T000000Z"])
+        return json.loads((self.ws / "snapshots" / "latest_changes.json").read_text(encoding="utf-8"))
+
+    @staticmethod
+    def nb(ref, version=1, votes=10):
+        return {"ref": ref, "title": ref, "author": ref.split("/")[0], "version": version, "votes": votes, "ranks": {}}
+
+    def test_failed_download_retried_next_run(self):
+        self.notebooks = [self.nb("alice/nb", version=3)]
+        self.api.failing = {"alice/nb"}
+        day1 = self.run_day()
+        self.assertEqual(day1["downloaded"], [{"ref": "alice/nb", "error": "timeout"}])
+
+        self.api.failing = set()  # network is back, notebook version unchanged
+        day2 = self.run_day()
+        self.assertEqual(len(self.api.calls), 2, "the failed download must be retried")
+        self.assertTrue(day2["downloaded"][0]["path"].endswith("v3.ipynb"))
+
+        day3 = self.run_day()  # already stored -> no re-download
+        self.assertEqual(day3["downloaded"], [])
+        self.assertEqual(len(self.api.calls), 2)
+
+        self.notebooks = [self.nb("alice/nb", version=4)]  # new version links to the previous one
+        day4 = self.run_day()
+        self.assertTrue(day4["downloaded"][0]["path"].endswith("v4.ipynb"))
+        self.assertTrue(day4["downloaded"][0]["previous"].endswith("v3.ipynb"))
+
+    def test_downloads_over_the_cap_continue_next_run(self):
+        (self.ws / "settings.yaml").write_text(
+            "competition:\n  slug: demo\nscout:\n  min_votes_to_download: 1\n  max_downloads_per_run: 2\n",
+            encoding="utf-8")
+        self.notebooks = [self.nb(f"u/nb{i}", votes=10 + i) for i in range(3)]
+        day1 = self.run_day()
+        self.assertEqual(len(day1["downloaded"]), 2)
+        self.assertEqual(day1["download_backlog"], 1)
+        day2 = self.run_day()
+        self.assertEqual([d["ref"] for d in day2["downloaded"]], ["u/nb0"])  # the one left over
+        self.assertEqual(day2["download_backlog"], 0)
+
+    def test_fresh_notebooks_before_backlog(self):
+        nbs = [self.nb("old/backlog", votes=100), self.nb("new/fresh", votes=5)]
+        order = [n["ref"] for n in fetch_updates.download_candidates(nbs, {"new/fresh"}, self.dir / "none", 1)]
+        self.assertEqual(order, ["new/fresh", "old/backlog"])
+
+    def test_low_vote_notebooks_skipped(self):
+        nbs = [self.nb("a/low", votes=0), self.nb("a/high", votes=9)]
+        cands = fetch_updates.download_candidates(nbs, set(), self.dir / "none", 5)
+        self.assertEqual([n["ref"] for n in cands], ["a/high"])
 
 
 class TestLogPrecision(Tmp):

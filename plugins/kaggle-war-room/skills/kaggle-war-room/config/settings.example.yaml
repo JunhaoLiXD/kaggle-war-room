@@ -50,5 +50,5 @@ scout:
   topics_to_track: 30             # top-N discussion topics pulled each day
   topic_sort: active              # hot | top | new | recent | active
   leaderboard_top_n: 50           # rows of the public LB kept in each snapshot
-  min_votes_to_download: 5        # only download/diff new or changed notebooks with at least this many votes
-  max_downloads_per_run: 10       # cap on notebook source downloads per run
+  min_votes_to_download: 5        # download sources of tracked notebooks with at least this many votes
+  max_downloads_per_run: 10       # cap per run; the rest (and failed downloads) are retried next run

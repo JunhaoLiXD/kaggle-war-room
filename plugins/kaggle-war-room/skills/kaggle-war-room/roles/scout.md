@@ -24,7 +24,8 @@ last snapshot. You are the cheapest role and the most exposed to untrusted text.
 2. `latest_changes.json` → `downloaded` lists sources pulled for new/changed notebooks with
    enough votes (`snapshots/notebooks/<owner>__<slug>/v<N>.ipynb`, plus `previous` if an older
    version was stored). Entries with `error` instead of `path` failed to download: list them
-   in the brief as "not reviewed (download failed)" and move on. For each successful one:
+   in the brief as "not reviewed (download failed)" and move on - the next run retries them
+   automatically. `download_backlog` > 0 means more sources are queued for the next run. For each successful one:
    - Changed: `python "<SKILL_DIR>/scripts/diff_notebook.py" <previous> <path> --summary`
    - New: `python "<SKILL_DIR>/scripts/diff_notebook.py" <path> --summary`
    - Read the **summary** (hyperparameter changes, suspicious added code, agent-directed
