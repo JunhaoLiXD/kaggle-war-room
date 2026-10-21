@@ -193,10 +193,8 @@ def status_of(settings, defaults, key, kind, ws):
     if key == "models.critic_command" and get_key(settings, "models.critic") == "subagent":
         return "n/a", v
     if key == "submissions.sample_submission" and not is_unset(v):
-        p = Path(str(v))
-        if not p.is_absolute():
-            p = Path(ws) / p
-        return ("OK" if p.exists() else "MISSING (file not found)"), v
+        p = _workspace.settings_path(ws, v)
+        return ("OK" if p.is_file() else "MISSING (file not found)"), v
     if is_unset(v):
         return ("MISSING" if kind == "required" else "unset"), v
     if v == get_key(defaults, key):

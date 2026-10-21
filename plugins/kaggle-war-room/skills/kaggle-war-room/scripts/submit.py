@@ -22,6 +22,7 @@ Examples:
   python submit.py poll --exp E012
 """
 import argparse
+import datetime as dt
 import json
 import statistics
 import sys
@@ -136,10 +137,21 @@ def cmd_submit(api, ws, settings, args):
         f = Path(args.file)
         if not f.exists():
             raise SystemExit(f"file not found: {f}")
-        sample = args.sample or (settings.get("submissions") or {}).get("sample_submission")
-        if sample:
+        configured = (settings.get("submissions") or {}).get("sample_submission")
+        if args.sample:  # typed on the command line: relative to the current directory
+            sample = Path(args.sample)
+        elif configured:  # from settings.yaml: relative to WORKDIR (same rule as configure.py)
+            sample = _workspace.settings_path(ws, configured)
+        else:
+            sample = None
+        if sample is not None:
+            if not sample.is_file():
+                raise SystemExit(f"sample_submission not found: {sample} (fix submissions.sample_submission; "
+                                 "relative paths are relative to the competition folder)")
             import check_submission
             ok, errors, warnings = check_submission.check(str(f), str(sample))
+            if ok is None:
+                raise SystemExit(f"could not read the files for validation: {errors[0]}")
             for w in warnings:
                 print(f"check WARNING: {w}")
             if not ok:
@@ -175,18 +187,19 @@ def cmd_submit(api, ws, settings, args):
         print("\nDRY RUN - nothing was submitted. Ask the user; re-run with --yes only after they approve.")
         return 0
 
+    started_at = K.now_iso()  # lower bound for matching a submission that comes back without a ref
     if code:
         resp = api.competition_submit_code(file_name=args.file, message=message, competition=slug,
                                            kernel=args.kernel, kernel_version=args.kernel_version, quiet=True)
     else:
         resp = api.competition_submit(args.file, message, slug, quiet=True)
     rec = {
-        "submitted_at": K.now_iso(), "exp_id": args.exp, "competition": slug, "message": message,
-        "kind": "code" if code else "file", "file": args.file,
+        "started_at": started_at, "submitted_at": K.now_iso(), "exp_id": args.exp, "competition": slug,
+        "message": message, "kind": "code" if code else "file", "file": args.file,
         "sha256": None if code else K.sha256(args.file),
         "kernel": args.kernel, "kernel_version": args.kernel_version,
         "ref": K.get(resp, "ref"), "server_message": K.get(resp, "message"),
-        "status": "PENDING", "public_score": None,
+        "status": "PENDING", "public_score": None, "logged": False,
     }
     K.append_jsonl(receipts_path(ws), rec)
     print(f"\nSubmitted. ref={rec['ref']} {rec['server_message'] or ''}".rstrip())
@@ -195,15 +208,35 @@ def cmd_submit(api, ws, settings, args):
 
 
 # ---------------------------------------------------------------- poll
-def find_submission(subs, rec):
+AMBIGUOUS = "AMBIGUOUS"
+CLOCK_SKEW = 120  # seconds of tolerance between our clock and Kaggle's
+
+
+def _when(value):
+    try:
+        t = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
+
+
+def find_submission(subs, rec, claimed=()):
+    """The Kaggle submission behind a receipt. With a ref: exact ref only. Without one: same
+    message, made after this receipt's submit started, not claimed by another receipt - and only
+    if exactly one fits (otherwise AMBIGUOUS). Never falls back to older submissions."""
     if rec.get("ref") is not None:
-        for s in subs:
-            if str(s.get("ref")) == str(rec["ref"]):
-                return s
-    for s in subs:  # fall back to message + time
-        if s.get("description") == rec.get("message") and (s.get("date") or "") >= rec["submitted_at"][:10]:
-            return s
-    return None
+        return next((s for s in subs if str(s.get("ref")) == str(rec["ref"])), None)
+    started = _when(rec.get("started_at") or rec.get("submitted_at"))
+    if started is None:
+        return None
+    floor = started - dt.timedelta(seconds=CLOCK_SKEW)
+    cands = [s for s in subs
+             if s.get("description") == rec.get("message")
+             and str(s.get("ref")) not in claimed
+             and (_when(s.get("date")) or floor - dt.timedelta(days=1)) >= floor]
+    if len(cands) > 1:
+        return AMBIGUOUS
+    return cands[0] if cands else None
 
 
 def cv_lb_report(ws, settings, exp_id, lb):
@@ -250,6 +283,9 @@ def append_submissions_md(ws, rec, cv):
     last_table = max((i for i in range(start, end) if lines[i].startswith("|")), default=None)
     if last_table is None:
         return
+    marker = f"| ref {rec.get('ref')} |"
+    if rec.get("ref") is not None and any(l.rstrip().endswith(marker) for l in lines[start:end]):
+        return  # already written (a retried poll must not add a second row)
     row = (f"| {rec['submitted_at'][:10]} | {rec.get('exp_id') or ''} | {Path(rec.get('file') or '').name or rec.get('kernel')} "
            f"| {cv if cv is not None else ''} | {rec.get('public_score')} | yes | ref {rec.get('ref')} |")
     lines.insert(last_table + 1, row)
@@ -264,35 +300,43 @@ def cmd_poll(api, ws, settings, args):
                and (args.exp is None or r.get("exp_id") == args.exp)]
     if not matches:
         raise SystemExit("No matching submission in receipts.jsonl (submit through submit.py first).")
-    if args.ref is None and args.exp is None:  # default: the latest submission still waiting
-        waiting = [i for i in matches if receipts[i].get("status") == "PENDING"]
-        matches = waiting or matches
+    def unfinished(r):  # not scored yet, or scored but not written to the logs yet
+        return r.get("status") == "PENDING" or (r.get("status") == "COMPLETE" and not r.get("logged", True))
+
+    if args.ref is None and args.exp is None:  # default: the latest submission still needing work
+        matches = [i for i in matches if unfinished(receipts[i])] or matches
     idx = matches[-1]
     rec = receipts[idx]
-    if rec.get("status") in ("COMPLETE", "ERROR"):  # already handled: never log twice
-        print(f"Already scored: {rec['status']} public LB = {rec.get('public_score')} "
+    if not unfinished(rec):  # fully handled: never log twice
+        print(f"Already scored and logged: {rec['status']} public LB = {rec.get('public_score')} "
               f"({rec.get('exp_id') or 'no exp'}, ref {rec.get('ref')}). Nothing to update.")
         return 0
 
-    deadline = time.time() + args.timeout * 60
-    while True:
-        sub = find_submission(recent_submissions(api, slug, 50), rec)
-        status = sub["status"] if sub else None
-        if status in ("COMPLETE", "ERROR"):
-            break
-        if time.time() >= deadline:
-            print(f"PENDING: still {status or 'not visible'} after {args.timeout:g} min. "
-                  "Run `submit.py poll` again in a few minutes.")
-            return 2
-        time.sleep(args.interval)
+    if rec.get("status") == "PENDING":
+        claimed = {str(r.get("ref")) for i, r in enumerate(receipts) if i != idx and r.get("ref") is not None}
+        deadline = time.time() + args.timeout * 60
+        while True:
+            sub = find_submission(recent_submissions(api, slug, 50), rec, claimed)
+            if sub == AMBIGUOUS:
+                print("AMBIGUOUS: several new submissions carry this message and Kaggle returned no ref. "
+                      "Not guessing - check `submit.py status` and re-run poll with --ref <ref>.")
+                return 3
+            status = sub["status"] if sub else None
+            if status in ("COMPLETE", "ERROR"):
+                break
+            if time.time() >= deadline:
+                print(f"PENDING: still {status or 'not visible'} after {args.timeout:g} min. "
+                      "Run `submit.py poll` again in a few minutes.")
+                return 2
+            time.sleep(args.interval)
+        rec.update(status=status, public_score=K.to_float(sub.get("public_score")), error=sub.get("error"),
+                   scored_at=K.now_iso(), ref=rec.get("ref") if rec.get("ref") is not None else sub.get("ref"),
+                   logged=(status == "ERROR"))
+        receipts[idx] = rec
+        K.write_jsonl(receipts_path(ws), receipts)  # scored; logging below is a separate, repeatable step
 
-    rec.update(status=status, public_score=K.to_float(sub.get("public_score")),
-               error=sub.get("error"), scored_at=K.now_iso())
-    receipts[idx] = rec
-    K.write_jsonl(receipts_path(ws), receipts)
-
-    if status == "ERROR":
-        print(f"Submission FAILED: {rec['error'] or 'no error description'}")
+    if rec["status"] == "ERROR":
+        print(f"Submission FAILED: {rec.get('error') or 'no error description'}")
         print("Code competition? Download the kernel log and check paths, internet, time and memory limits.")
         return 1
     lb = rec["public_score"]
@@ -306,6 +350,9 @@ def cmd_poll(api, ws, settings, args):
         for line in cv_lb_report(ws, settings, rec["exp_id"], lb):
             print(line)
     append_submissions_md(ws, rec, cv)
+    rec["logged"] = True
+    receipts[idx] = rec
+    K.write_jsonl(receipts_path(ws), receipts)
     return 0
 
 

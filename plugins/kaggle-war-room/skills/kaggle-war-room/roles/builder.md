@@ -66,7 +66,8 @@ Pushes of an unreviewed fork are refused.
 3. **Stop and ask the user**, showing the dry-run output. Only after an explicit yes:
    the same command with `--yes`.
 4. `python "<SKILL_DIR>/scripts/submit.py" poll --exp <exp_id>` — waits a few minutes at most; exit
-   code 2 means still pending, so run it again later. Once scored it writes the LB
+   code 2 means still pending, so run it again later; exit code 3 means it could not tell which
+   Kaggle submission is this one - ask the user and re-run with `--ref`. Once scored it writes the LB
    into `experiments.csv` and a row into `submissions.md`, and compares LB with CV.
 5. If it prints **CV/LB divergence**, add it to the experiment's notes
    (`log_experiment.py --update <exp_id> --notes "CV/LB divergence: ..."`) and tell the Strategist.

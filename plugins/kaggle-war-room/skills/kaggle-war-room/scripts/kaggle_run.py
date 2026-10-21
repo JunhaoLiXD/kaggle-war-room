@@ -267,12 +267,36 @@ def cmd_status(api, ws, settings, args):
     return 0
 
 
+def server_version(api, ref):
+    """Current version number of a kernel on Kaggle (the output API always serves this one)."""
+    owner, slug = ref.split("/")[:2]
+    try:
+        listed = api.kernels_list(user=owner, search=slug, page_size=50) or []
+    except Exception:
+        return None
+    for k in listed:
+        if str(K.get(k, "ref") or "").strip("/").lower() == f"{owner}/{slug}".lower():
+            return K.get(k, "current_version_number", "currentVersionNumber")
+    return None
+
+
 def download(api, ws, name, ref):
+    """Download the kernel's outputs into output/v<N>, N = the version Kaggle actually serves.
+    Kaggle's output API cannot pick a version, so a mismatch with runs.jsonl is reported."""
     runs = [r for r in K.read_jsonl(Path(ws) / "kernels" / "runs.jsonl") if r.get("name") == name]
-    version = runs[-1].get("version") if runs else None
-    dest = kdir(ws, name) / "output" / (f"v{version}" if version else "latest")
+    recorded = runs[-1].get("version") if runs else None
+    actual = server_version(api, ref)
+    if actual is not None and recorded is not None and int(actual) != int(recorded):
+        print(f"WARNING: Kaggle now serves v{actual} of {ref}, but our last push was v{recorded} - someone "
+              f"pushed a newer version. Saving as v{actual}; do not attribute these outputs to v{recorded}.")
+    version = actual if actual is not None else None
+    dest = kdir(ws, name) / "output" / (f"v{version}" if version is not None else "unknown-version")
+    if version is None:
+        print("WARNING: could not read the kernel's current version; saving under output/unknown-version.")
     dest.mkdir(parents=True, exist_ok=True)
     res = api.kernels_output(ref, str(dest), force=True, quiet=True)
+    if runs and version is not None:
+        update_last_run(ws, name, downloaded_version=int(version))
     files = res[0] if isinstance(res, (list, tuple)) and res and isinstance(res[0], list) else res
     logs = sorted(p for p in dest.rglob("*.log"))
     print(f"Downloaded outputs to {dest}" + (f" ({len(files)} files)" if isinstance(files, list) else ""))
@@ -307,6 +331,23 @@ def cmd_output(api, ws, settings, args):
     return 0
 
 
+def dataset_state(api, owner, ref):
+    """(exists, is_private) for one of your datasets; is_private is None when it cannot be read."""
+    try:
+        api.dataset_status(ref)
+    except Exception:
+        return False, None
+    try:
+        listed = api.dataset_list(mine=True, search=ref.split("/", 1)[1]) or []
+    except Exception:
+        return True, None
+    for d in listed:
+        if str(K.get(d, "ref") or "").strip("/").lower().endswith(ref.lower()):
+            value = K.get(d, "is_private", "isPrivate")
+            return True, (None if value is None else bool(value))
+    return True, None
+
+
 def cmd_upload(api, ws, settings, args):
     folder = Path(args.folder)
     if not folder.is_dir():
@@ -319,16 +360,19 @@ def cmd_upload(api, ws, settings, args):
     meta.setdefault("licenses", [{"name": "CC0-1.0"}])
     files = [p for p in folder.rglob("*") if p.is_file() and p.name != "dataset-metadata.json"]
     size_mb = sum(p.stat().st_size for p in files) / 1e6
-    try:
-        api.dataset_status(ref)
-        exists = True
-    except Exception:
-        exists = False
+    exists, is_private = dataset_state(api, owner, ref)
+    if exists and is_private is None:
+        raise SystemExit(f"{ref} exists but its visibility could not be read. Check it on Kaggle first; "
+                         "a new version is published with the dataset's existing visibility.")
+    if exists and not is_private and not args.public:
+        raise SystemExit(f"{ref} is a PUBLIC dataset: a new version would publish these files. Use another "
+                         "--slug for a private dataset, or pass --public after checking rules.md with the user.")
+    public = (not is_private) if exists else bool(args.public)
     print("== Dataset upload plan ==")
-    print(f"dataset     : {ref}  ({'new version' if exists else 'new dataset'})")
-    print(f"visibility  : {'PUBLIC' if args.public else 'private'}")
+    print(f"dataset     : {ref}  ({'new version of an existing dataset' if exists else 'new dataset'})")
+    print(f"visibility  : {'PUBLIC' if public else 'private'}" + (" (current visibility on Kaggle)" if exists else ""))
     print(f"content     : {len(files)} files, {size_mb:.1f} MB from {folder}")
-    if args.public:
+    if public:
         print("WARNING     : public datasets may break competition sharing rules (e.g. models trained on "
               "competition data). Only with the user's explicit OK after checking rules.md.")
     if not files:
@@ -344,7 +388,7 @@ def cmd_upload(api, ws, settings, args):
         resp = api.dataset_create_new(str(folder), public=bool(args.public), quiet=True, dir_mode="zip")
     err = K.get(resp, "error")
     rec = {"uploaded_at": K.now_iso(), "dataset": ref, "folder": str(folder), "new": not exists,
-           "public": bool(args.public), "url": K.get(resp, "url"), "error": err}
+           "public": public, "url": K.get(resp, "url"), "error": err}
     K.append_jsonl(Path(ws) / "kernels" / "datasets.jsonl", rec)
     if err:
         print(f"Upload FAILED: {err}")

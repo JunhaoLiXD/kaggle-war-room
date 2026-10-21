@@ -68,12 +68,13 @@ def kfold(n, k, rng):
 
 
 def stratified(labels, k, rng):
+    """Shuffle within each class, lay the classes end to end, and deal folds round-robin over the
+    whole sequence: every class is spread evenly AND fold sizes differ by at most one."""
     labels = np.asarray(labels)
+    order = np.concatenate([rng.permutation(np.flatnonzero(labels == cls))
+                            for cls in rng.permutation(np.unique(labels))])
     folds = np.empty(len(labels), dtype=int)
-    for cls in np.unique(labels):
-        idx = rng.permutation(np.flatnonzero(labels == cls))
-        offset = rng.integers(k)
-        folds[idx] = (np.arange(len(idx)) + offset) % k
+    folds[order] = (np.arange(len(order)) + rng.integers(k)) % k
     return folds
 
 
@@ -100,8 +101,11 @@ def group_split(groups, k, rng, labels=None):
     fold_counts = np.zeros((k, counts.shape[1]))
     fold_sizes = np.zeros(k)
     assign = np.empty(len(uniq), dtype=int)
-    for g in order:
-        if labels is None:
+    for left, g in zip(range(len(order), 0, -1), order):
+        empty = np.flatnonzero(fold_sizes == 0)
+        if len(empty) and left <= len(empty):  # just enough groups left to fill the empty folds
+            best = int(empty[0])
+        elif labels is None:
             best = int(np.argmin(fold_sizes))
         else:
             costs = []
@@ -199,6 +203,10 @@ def main(argv=None):
             pass  # ISO dates sort correctly as strings
         folds = time_split(times, args.folds)
 
+    sizes = np.bincount(folds, minlength=args.folds)
+    if (sizes == 0).any():
+        raise SystemExit(f"fold(s) {np.flatnonzero(sizes == 0).tolist()} would be empty (sizes {sizes.tolist()}) - "
+                         "use fewer folds or a different scheme; nothing was written")
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)

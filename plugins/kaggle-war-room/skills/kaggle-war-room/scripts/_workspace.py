@@ -78,6 +78,12 @@ def register(root, slug, make_active=True):
     return index
 
 
+def settings_path(workdir, value):
+    """A path from settings.yaml: absolute as written, relative ones are relative to WORKDIR."""
+    p = Path(str(value)).expanduser()
+    return p if p.is_absolute() else Path(workdir) / p
+
+
 def resolve_workdir(workdir=None, slug=None):
     """Return the competition folder: explicit --workdir, else <root>/<slug or active>."""
     if workdir:

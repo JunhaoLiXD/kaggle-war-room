@@ -138,7 +138,10 @@ After install:
 
 **Waiting** — `submit.py poll` and `kaggle_run.py wait` wait at most a few minutes (agent
 commands are time-limited), then exit with code 2 = still pending/running. Do other work and
-run them again later; never wrap them in long sleep loops. `poll` logs each score exactly once.
+run them again later; never wrap them in long sleep loops. `poll` logs each score exactly once
+(a failed log write is retried by the next `poll`); exit code 3 = it cannot tell which Kaggle
+submission is yours - show `submit.py status` to the user and re-run with `--ref`. Downloaded
+outputs are filed under the version Kaggle actually serves (`output/v<N>`).
 
 `submit.py poll` writes the public LB into `experiments.csv` and reports LB vs CV against the
 historical offset; on a **CV/LB divergence** warning the Builder adds it to that experiment's
@@ -228,7 +231,7 @@ All live in `kaggle-war-room-workspace/<slug>/settings.yaml` (copied from
 | `kaggle_username` | `null` | Owner of your kernels/datasets; auto-detected from credentials when possible |
 | `submissions.daily_limit` | `5` | Must match the competition rules |
 | `submissions.allocation` | `strategist` | `strategist` decides daily, or an integer = fixed submissions per day |
-| `submissions.sample_submission` | `null` | Path to `sample_submission.csv`; `submit.py` validates every file against it |
+| `submissions.sample_submission` | `null` | Path to `sample_submission.csv` (absolute, or relative to the competition folder); `submit.py` validates every file against it |
 | `submissions.poll_timeout_minutes` | `8` | Max minutes one `submit.py poll` waits; it returns PENDING (exit 2) and is re-run later. Keep under 10 (agent command time limits) |
 | `research.writeup_topics_scan` / `max_message_chars` | `100` / `3000` | How many forum topics to scan for writeups; truncation per post (saves tokens) |
 | `phases.explore.until_days_left` | `30` | Explore while more than this many days remain |

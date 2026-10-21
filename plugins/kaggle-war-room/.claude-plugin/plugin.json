@@ -1,6 +1,6 @@
 {
   "name": "kaggle-war-room",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Multi-role agent workflow for Kaggle competitions: daily monitoring of public notebooks and discussions, notebook review and replication, ensembling, adversarial plan review, and anti-shake-up final submissions.",
   "author": {
     "name": "JunhaoLiXD",

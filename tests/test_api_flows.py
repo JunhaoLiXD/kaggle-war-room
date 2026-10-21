@@ -133,6 +133,14 @@ class FakeKaggle:
         Path(path, "train.log").write_text("epoch 1 loss 0.5\n")
         return (["model.pt", "train.log"], "")
 
+    def kernels_list(self, user=None, search=None, page_size=20, **kw):
+        version = getattr(self, "server_kernel_version", 1)
+        return [{"ref": f"{user}/{search}", "current_version_number": version}]
+
+    def dataset_list(self, mine=False, search=None, **kw):
+        public = getattr(self, "public_datasets", set())
+        return [{"ref": r, "is_private": r not in public} for r in self.datasets if search in r]
+
     def dataset_status(self, ref):
         if ref not in self.datasets:
             raise RuntimeError("404")
@@ -498,6 +506,137 @@ class TestKaggleRun(FlowTest):
         self.assertIn(("dataset_new", "me/comp-x-weights", False, "zip"), self.api.calls)
         run(kaggle_run.main, args + ["--yes", "--version-notes", "fold 2"])
         self.assertIn(("dataset_version", "me/comp-x-weights", "fold 2"), self.api.calls)
+
+
+class TestRegressions031(FlowTest):
+    """Bugs fixed in 0.3.1 (found in review of 0.3.0)."""
+
+    def prepare_submission(self):
+        sample = self.write_csv("s.csv", ["0,0.5"])
+        self.set_setting("sample_submission: null", f"sample_submission: {sample.as_posix()}")
+        with contextlib.redirect_stdout(io.StringIO()):
+            log_experiment.main(self.W() + ["--solution", "a", "--cv", "0.8"])
+        return self.write_csv("E001.csv", ["0,0.1"])
+
+    # 1 ---------------------------------------------------------------
+    def test_new_version_of_public_dataset_refused(self):
+        d = self.ws / "kernels" / "out"
+        d.mkdir(parents=True)
+        (d / "w.pt").write_bytes(b"w")
+        self.api.datasets.add("me/comp-x-weights")
+        self.api.public_datasets = {"me/comp-x-weights"}
+        args = self.W() + ["upload-dataset", str(d), "--slug", "comp-x-weights"]
+        with self.assertRaises(SystemExit) as cm:
+            run(kaggle_run.main, args + ["--yes"])
+        self.assertIn("PUBLIC", str(cm.exception))
+        self.assertEqual([c for c in self.api.calls if c[0].startswith("dataset_")], [])
+        code, out = run(kaggle_run.main, args + ["--public"])  # explicit opt-in: plan shows PUBLIC
+        self.assertIn("visibility  : PUBLIC", out)
+
+    def test_unknown_visibility_refused(self):
+        d = self.ws / "kernels" / "out"
+        d.mkdir(parents=True)
+        (d / "w.pt").write_bytes(b"w")
+        self.api.datasets.add("me/comp-x-weights")
+        self.api.dataset_list = lambda **kw: []  # exists, but not visible in the listing
+        with self.assertRaises(SystemExit) as cm:
+            run(kaggle_run.main, self.W() + ["upload-dataset", str(d), "--slug", "comp-x-weights", "--yes"])
+        self.assertIn("could not be read", str(cm.exception))
+
+    # 2 ---------------------------------------------------------------
+    def test_refless_submission_never_matches_older_one(self):
+        f = self.prepare_submission()
+        self.api.subs = [{"ref": 99, "date": (NOW - dt.timedelta(hours=5)).isoformat(), "description": "E001",
+                          "status": "COMPLETE", "public_score": "0.70", "_polls": 9}]
+        hidden = []
+
+        def submit_without_ref(file, message, slug, quiet=False):
+            FakeKaggle.competition_submit(self.api, file, message, slug, quiet)
+            hidden.append(self.api.subs.pop(0))  # not visible in the list yet
+            return {"ref": None, "message": "ok"}
+        self.api.competition_submit = submit_without_ref
+        run(submit.main, self.W() + ["submit", str(f), "--exp", "E001", "--yes"])
+        code, out = run(submit.main, self.W() + ["poll", "--interval", "0", "--timeout", "0"])
+        self.assertEqual(code, 2)
+        self.assertEqual(log_experiment.read_rows(self.ws / "experiments.csv")[0]["lb"], "")
+        self.api.subs.insert(0, hidden[0])  # now it shows up
+        self.api.score_after_polls, self.api.next_score = 1, 0.83
+        code, out = run(submit.main, self.W() + ["poll", "--interval", "0", "--timeout", "1"])
+        self.assertEqual(code, 0)
+        self.assertEqual(log_experiment.read_rows(self.ws / "experiments.csv")[0]["lb"], "0.83")
+        new_ref = hidden[0]["ref"]
+        self.assertNotEqual(new_ref, 99)
+        self.assertEqual(_kaggle.read_jsonl(self.ws / "submissions" / "receipts.jsonl")[0]["ref"], new_ref)
+
+    def test_ambiguous_refless_match_refused(self):
+        f = self.prepare_submission()
+        self.api.competition_submit = lambda file, message, slug, quiet=False: {"ref": None}
+        run(submit.main, self.W() + ["submit", str(f), "--exp", "E001", "--yes"])
+        for ref in (201, 202):  # two new submissions with the same message
+            self.api.subs.insert(0, {"ref": ref, "date": dt.datetime.now(dt.timezone.utc).isoformat(),
+                                     "description": "E001", "status": "COMPLETE", "public_score": "0.8", "_polls": 9})
+        code, out = run(submit.main, self.W() + ["poll", "--interval", "0", "--timeout", "1"])
+        self.assertEqual(code, 3)
+        self.assertIn("AMBIGUOUS", out)
+        self.assertEqual(log_experiment.read_rows(self.ws / "experiments.csv")[0]["lb"], "")
+
+    # 3 ---------------------------------------------------------------
+    def test_outputs_named_by_version_kaggle_serves(self):
+        code_file = self.ws / "code" / "train.py"
+        code_file.write_text("print(1)\n")
+        run(kaggle_run.main, self.W() + ["init", "train", "--code", str(code_file)])
+        run(kaggle_run.main, self.W() + ["push", "train", "--yes"])  # recorded as v1
+        self.api.server_kernel_version = 2                              # someone pushed v2 meanwhile
+        code, out = run(kaggle_run.main, self.W() + ["output", "train"])
+        self.assertIn("serves v2", out)
+        self.assertTrue((self.ws / "kernels" / "train" / "output" / "v2" / "model.pt").exists())
+        self.assertFalse((self.ws / "kernels" / "train" / "output" / "v1").exists())
+
+    # 4 ---------------------------------------------------------------
+    def test_failed_lb_logging_is_retried_once(self):
+        f = self.prepare_submission()
+        self.api.next_score = 0.81
+        run(submit.main, self.W() + ["submit", str(f), "--exp", "E001", "--yes"])
+        original = log_experiment.main
+
+        def broken(argv):
+            raise OSError("disk full")
+        log_experiment.main = broken
+        try:
+            with self.assertRaises(OSError):
+                run(submit.main, self.W() + ["poll", "--interval", "0", "--timeout", "1"])
+        finally:
+            log_experiment.main = original
+        rec = _kaggle.read_jsonl(self.ws / "submissions" / "receipts.jsonl")[0]
+        self.assertEqual((rec["status"], rec["logged"]), ("COMPLETE", False))
+        code, out = run(submit.main, self.W() + ["poll", "--interval", "0", "--timeout", "1"])
+        self.assertEqual(code, 0)
+        self.assertEqual(log_experiment.read_rows(self.ws / "experiments.csv")[0]["lb"], "0.81")
+        code, out = run(submit.main, self.W() + ["poll", "--interval", "0", "--timeout", "1"])
+        self.assertIn("Already scored and logged", out)
+        md = (self.ws / "submissions.md").read_text(encoding="utf-8")
+        self.assertEqual(md.count("| ref 100 |"), 1)
+
+    # 5 ---------------------------------------------------------------
+    def test_relative_sample_path_resolved_from_workdir(self):
+        import os
+        (self.ws / "data").mkdir()
+        (self.ws / "data" / "sample.csv").write_text("id,target\n0,0.5\n")
+        self.set_setting("sample_submission: null", "sample_submission: data/sample.csv")
+        with contextlib.redirect_stdout(io.StringIO()):
+            log_experiment.main(self.W() + ["--solution", "a", "--cv", "0.8"])
+        f = self.write_csv("E001.csv", ["0,0.1"])
+        cwd = os.getcwd()
+        os.chdir(self.dir)  # run from the project root, not the competition folder
+        try:
+            code, out = run(submit.main, self.W() + ["submit", str(f), "--exp", "E001"])
+        finally:
+            os.chdir(cwd)
+        self.assertIn("check_submission: PASS", out)
+        self.set_setting("sample_submission: data/sample.csv", "sample_submission: data/missing.csv")
+        with self.assertRaises(SystemExit) as cm:
+            run(submit.main, self.W() + ["submit", str(f), "--exp", "E001"])
+        self.assertIn("sample_submission not found", str(cm.exception))
 
 
 if __name__ == "__main__":

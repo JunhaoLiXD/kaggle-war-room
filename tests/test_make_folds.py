@@ -92,6 +92,21 @@ class TestMakeFolds(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 make_folds.main([str(self.train), "--out", str(self.dir / "a.csv"), "--id", "image_id"])
 
+    def test_no_empty_folds_tiny_data(self):
+        """0.3.1: per-class random offsets could leave a fold empty ([0, 2, 1, 1, 1])."""
+        for seed in range(30):
+            folds = make_folds.stratified(["a", "a", "b", "b", "c"], 5, np.random.default_rng(seed))
+            self.assertEqual(sorted(np.bincount(folds, minlength=5).tolist()), [1, 1, 1, 1, 1], seed)
+            g = make_folds.group_split(["p1", "p2", "p3", "p4", "p5", "p5"], 5, np.random.default_rng(seed),
+                                       ["a", "a", "b", "b", "c", "c"])
+            self.assertEqual(len(set(g.tolist())), 5, seed)
+
+    def test_stratified_fold_sizes_differ_by_at_most_one(self):
+        rng = np.random.default_rng(5)
+        labels = rng.choice(["a", "b", "c", "d"], size=103, p=[0.6, 0.25, 0.1, 0.05]).tolist()
+        sizes = np.bincount(make_folds.stratified(labels, 7, rng), minlength=7)
+        self.assertLessEqual(sizes.max() - sizes.min(), 1)
+
     def test_missing_column_and_too_few_groups(self):
         with self.assertRaises(SystemExit):
             make_folds.main([str(self.train), "--out", str(self.dir / "x.csv"), "--target", "nope"])

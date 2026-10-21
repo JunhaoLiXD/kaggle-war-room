@@ -42,7 +42,7 @@ submissions:
   daily_limit: 5                  # must match the competition rules
   allocation: strategist          # strategist = decided daily in plan.md; integer = fixed per day
   final_picks: 2                  # number of final submissions allowed
-  sample_submission: null         # path to sample_submission.csv; every submission is validated against it
+  sample_submission: null         # sample_submission.csv (absolute, or relative to this folder); every submission is checked against it
   poll_timeout_minutes: 8         # max minutes one `submit.py poll` waits (keep < 10: agent command limits)
 
 phases:                           # Ratio of exploration vs. fine-tuning by days left.
